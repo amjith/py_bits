@@ -197,6 +197,42 @@ class Datalog:
 				DutLineCount = 0
 				flowOn = True
 
+	def FindDieEC(self, inpFile, EC=[]):
+		if not EC:
+			EC = self.EC	
+
+		try:
+			inp_file = open(inpFile, 'r')
+		except IOError:
+			print >>err,'Cannot open input file:', inpFile
+			sys.exit(2)
+		
+		flowOn = False
+		DutLineCount = 0
+		
+		for line in inp_file:
+			if flowOn:
+
+			elif self.reFlowStart.search(line):
+				DutLineCount = 0
+				flowOn = True
+
+	#--------------------------------------------------
+	# def ParseDie(self, inpFile, X, Y):
+	# 	try:
+	# 		inp_file = open(inpFile, 'r')
+	# 	except IOError:
+	# 		print >>err,'Cannot open input file:', inpFile
+	# 		sys.exit(2)
+	# 	
+	# 	flowOn = False
+	#-------------------------------------------------- 
+
+	#--------------------------------------------------
+	# 	for line in inp_file:
+	# 		if flowOn:
+	#-------------------------------------------------- 
+
 		
 	def PrintResults(self):
 		print "Number of Trends:", len(self.Trend)
@@ -210,7 +246,7 @@ class Datalog:
 def main(argv):
 	cmdLine = CmdLineParser(argv)
 	cmdLine.parser()
-	cmdLine.print_args()
+	#cmdLine.print_args()
 
 	dlog = Datalog()
 	dlog.TrendSeriesParser(cmdLine.inpFile)
