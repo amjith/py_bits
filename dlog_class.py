@@ -30,7 +30,12 @@ from operator import itemgetter
 err = sys.stderr
 log = sys.stdout
 outf = sys.stdout
+debug_ = 0
 
+def debug_log( string, var):
+	global debug_
+	if debug_:
+		print >>log, string, var
 
 class CmdLineParser:
 	"Command Line parser."
@@ -38,12 +43,6 @@ class CmdLineParser:
 	def __init__(self,arguments):
 		self.argv = arguments
 		self.inpFile = self.outFile = None
-		self.debug = 0
-
-	def debug_log(self, string, var):
-		if self.debug:
-			print >>log, string, var
-
 
 	def usage(self, exit_code):
 		print >>err, __doc__
@@ -60,10 +59,11 @@ class CmdLineParser:
 			if opt in ("-h", "--help"):      
 				self.usage(0)
 			elif opt == '-d':                
-				self.debug = 1
+				global debug_
+				debug_ = 1
 			elif opt in ("-o", "--output"): 
 				self.outFile = arg
-				self.debug_log( "Output File:",self.outFile )
+				debug_log( "Output File:",self.outFile )
 				try:
 					out_fp = open(self.outFile, 'w')
 				except IOError:
@@ -77,7 +77,7 @@ class CmdLineParser:
 			self.usage(2)
 		else: 
 			self.inpFile = args[0]  # Get the first argument as the input file, if more files are specified, ignore others
-			self.debug_log( "Input File:",self.inpFile)
+			debug_log( "Input File:",self.inpFile)
 			try:
 				inp_fp = open(self.inpFile, 'r')
 			except IOError:
@@ -94,7 +94,7 @@ class CmdLineParser:
 class Datalog:
 	"A datalog class that parses and stores various statistics about the datalog"
 
-	def __init__(self, EC = []):
+	def __init__(self, debug=False, EC = []):
 		self.reTrend = re.compile(r"""
 			   ^			# anchor the beginning
 			   \s*			# leading optional space
@@ -151,10 +151,13 @@ class Datalog:
 		self.Series = []
 		self.DieXY = ()
 		self.MaxLines = 0
+		self.TestStat = {}
+
 		if EC:
 			self.EC= EC
 		else:
 			self.EC= ['*', '1','2','3','4','5','6','7','8','9']
+		debug_log("EC:",self.EC)
 
 	def TrendSeriesParser(self, inpFile):
 		try:
@@ -167,10 +170,12 @@ class Datalog:
 			if self.reTrend.search(line):       # Trend Def match
 				TrendMatch = self.reTrend.search(line)
 				self.Trend.append(TrendMatch.groups()[0])
+				debug_log("Append Trend:",TrendMatch.groups()[0])
 			elif self.reSeries.search(line):    # Series Def match
 				SeriesMatch = self.reSeries.search(line)
 				self.Series.append(SeriesMatch.groups()[0])
-			elif self.reFlowStart.search(line): # Flow started
+				debug_log("Append Series:",SeriesMatch.groups()[0])
+			elif self.reFlowStart.search(line): # Flow started no more trends/series
 				inp_file.close();
 				break;
 
@@ -178,7 +183,6 @@ class Datalog:
 	def FindDie(self, inpFile, max = True, EC = []):
 		if not EC:
 			EC = self.EC	
-
 		try:
 			inp_file = open(inpFile, 'r')
 		except IOError:
@@ -194,17 +198,20 @@ class Datalog:
 				if self.reDutXY.search(line):
 					DutMatch = self.reDutXY.search(line)
 					DutXY = (DutMatch.groups()[0], DutMatch.groups()[1])
+					debug_log("Current die:",DutXY)
 				elif self.reBinLine.search(line):
 					BinMatch = self.reBinLine.search(line)
 					flowOn = False
 					if DutLineCount > self.MaxLines and BinMatch.groups()[1] in self.EC:
 						self.MaxLines = DutLineCount
 						self.DieXY = DutXY
+						debug_log("New Max die found:",self.DieXY)
 					if not max: # if max is False, then break the loop at the first match
 						break
 			elif self.reFlowStart.search(line):
 				DutLineCount = 0
 				flowOn = True
+		debug_log("Chosen die:",self.DieXY)
 
 
 	def ParseDie(self, inpFile, X, Y):
@@ -214,7 +221,10 @@ class Datalog:
 			print >>err,'Cannot open input file:', inpFile
 			sys.exit(2)
 		
+		testHeader = False
 		flowOn = False
+		TestName = "Header"
+		self.TestStat[TestName] = [ 0, 0, 0 ]
 
 		for line in inp_file:
 			if flowOn:
@@ -222,14 +232,36 @@ class Datalog:
 				if self.reDutXY.search(line):
 					DutMatch = self.reDutXY.search(line)
 					DutXY = (DutMatch.groups()[0], DutMatch.groups()[1])
+					debug_log("Dut XY:",DutXY)
 					if  DutXY != (X,Y):
+						debug_log("Not the chosen die",None)
 						flowOn = False
+						TestName = "Header"
+						self.TestStat[TestName] = [ 0, 0, 0 ]
 				elif self.reBinLine.search(line):
+					debug_log("Bin Line", None)
 					break
-
-				elif self.reFlowStart.search(line):
-					DutLineCount = 0
-					flowOn = True
+				elif self.reTestStart.search(line):
+					testHeader = True
+					debug_log("First Test Header",None)
+				elif testHeader and self.reTestName.search(line):
+					TestName = self.reTestName.search(line).group()[0]
+					self.TestStat[TestName] = [ 0, 0, 0 ]
+					debug_log("TestName:", TestName)
+				elif testHeader and self.reTestStart.search(line):
+					testHeader = False
+					debug_log("Second Test Header",None)
+				elif self.reFirstWord.search(line):
+					self.TestStat[TestName][0] += 1
+					if self.reFirstWord.search(line).groups()[0] in self.Trend:
+						self.TestStat[TestName][1] += 1
+					elif self.reFirstWord.search(line).groups()[0] in self.Series:
+						self.TestStat[TestName][2] += 1
+					debug_log("TestStat:",self.TestStat[TestName])
+			elif self.reFlowStart.search(line):
+				DutLineCount = 0
+				flowOn = True
+				debug_log("TestFlow Start",None)
 
 		
 	def PrintResults(self):
@@ -249,6 +281,7 @@ def main(argv):
 	dlog = Datalog()
 	dlog.TrendSeriesParser(cmdLine.inpFile)
 	dlog.FindDie(cmdLine.inpFile)
+	dlog.ParseDie(cmdLine.inpFile, dlog.DieXY[0], dlog.DieXY[1])
 	dlog.PrintResults()
 	
 
