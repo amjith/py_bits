@@ -43,7 +43,7 @@ def main(argv):
 		print str(error_string);
 		usage() 
 		sys.exit(2)
-	for opt, arg in opts:                
+	for opt, arg in opts: 
 		if opt in ("-h", "--help"):      
 			usage()
 			sys.exit()
@@ -67,6 +67,8 @@ def main(argv):
 		dlog = open(inp_file, 'r')
 		if (_debug):
 			print >>log, "Input File:",inp_file
+
+	EC_bin = ['*', 1,2,3,4,5,6,7,8,9]
 
 	trend = re.compile(r"""
 			^			# anchor the beginning
@@ -108,15 +110,24 @@ def main(argv):
 			\s*
 			""", re.VERBOSE)
 
+	test_name = re.compile(r"""
+			^\|\s*(\S+)
+			""", re.VERBOSE)
+
+	first_word = re.compile(r"""
+			^(\S+)
+			""", re.VERBOSE)
+
 	dut_xy =  re.compile(r""" 
 			\(X,Y\)=\((\d+),(\d+)\)  # Match (X,Y)=(\num,\num) 
 			""", re.VERBOSE)
 
 	trend_names = []
-	while True:
-		line = inf.readline()
-		if not line:
-			break
+	series_names = []
+
+	line = dlog.readline()
+	while line:
+		num_lines = 0
 		# Look for Trends and Series Registers
 		if trend.search(line):
 			match = trend.search(line)
@@ -124,9 +135,37 @@ def main(argv):
 		elif series.search(line):
 			match = series.search(line)
 			series_name.append(match.group[0])
-			
-
-
+		elif start_flow.search(line):
+			#match = start_flow.search(line)
+			line = dlog.readline() # Read the first line in the flow
+			num_lines += 1
+			test_name = "Header"
+			test_stat[test_name]=[0,0,0]
+			while line:
+				tt_num_lines += 1
+				test_stat[test_name][0] += 1 # Increment the first element in list
+				if test_start.search(line): # +===...===+
+					line = dlog.readline()  # Next line
+					if test_name.search(line): # Look for test_name
+						test_name = test_name.search(line).groups()[0] # | TESTNAME
+					dlog.readline() # Throw away +===...===+
+					test_stat[test_name] = [0,0,0] # New key added and stats initialized
+				elif first_word.search(line).groups()[0] in trend_name: # if first word is a trend
+					test_stat[test_name][1] += 1
+				elif first_word.search(line).groups()[0] in series_name: # if first word is a series
+					test_stat[test_name][2] += 1
+				elif bin_line.search(line):
+					match = bin_line.search(line)
+					if match.groups()[1] in EC_bin:  # If second char matches something in EC_bin then full-flow
+						done = True
+						break
+					else:
+						reset()
+						break
+				line = dlog.readline() # Read next line in flow
+		if done:
+			break
+		line = dlog.readline() # Read next line in dlog
 
 
 
