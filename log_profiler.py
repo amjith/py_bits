@@ -30,11 +30,21 @@ import re
 err = sys.stderr
 _debug = 0
 log = sys.stdout
+test_stat = {}
+test_name = "Header"
 
 def usage():
 	print >>err, __doc__
 
+
+def reset():
+	print "Reset()"
+	test_stat = {}
+	test_name = "Header"
+	test_stat[test_name] = [0,0,0]
+
 def main(argv):                          
+
 	outf = sys.stdout
 	inp_file = None
 	try:                                
@@ -110,7 +120,7 @@ def main(argv):
 			\s*
 			""", re.VERBOSE)
 
-	test_name = re.compile(r"""
+	testname = re.compile(r"""
 			^\|\s*(\S+)
 			""", re.VERBOSE)
 
@@ -122,32 +132,31 @@ def main(argv):
 			\(X,Y\)=\((\d+),(\d+)\)  # Match (X,Y)=(\num,\num) 
 			""", re.VERBOSE)
 
-	trend_names = []
-	series_names = []
+	trend_name = []
+	series_name = []
 
 	line = dlog.readline()
+	done = False
 	while line:
 		num_lines = 0
 		# Look for Trends and Series Registers
 		if trend.search(line):
 			match = trend.search(line)
-			trend_name.append(match.group[0])
+			trend_name.append(match.groups()[0])
 		elif series.search(line):
 			match = series.search(line)
-			series_name.append(match.group[0])
+			series_name.append(match.groups()[0])
 		elif start_flow.search(line):
 			#match = start_flow.search(line)
+			reset()
 			line = dlog.readline() # Read the first line in the flow
 			num_lines += 1
-			test_name = "Header"
-			test_stat[test_name]=[0,0,0]
 			while line:
-				tt_num_lines += 1
 				test_stat[test_name][0] += 1 # Increment the first element in list
 				if test_start.search(line): # +===...===+
 					line = dlog.readline()  # Next line
-					if test_name.search(line): # Look for test_name
-						test_name = test_name.search(line).groups()[0] # | TESTNAME
+					if testname.search(line): # Look for test_name
+						test_name = testname.search(line).groups()[0] # | TESTNAME
 					dlog.readline() # Throw away +===...===+
 					test_stat[test_name] = [0,0,0] # New key added and stats initialized
 				elif first_word.search(line).groups()[0] in trend_name: # if first word is a trend
@@ -163,6 +172,7 @@ def main(argv):
 						reset()
 						break
 				line = dlog.readline() # Read next line in flow
+				num_lines += 1
 		if done:
 			break
 		line = dlog.readline() # Read next line in dlog
