@@ -25,62 +25,25 @@ __copyright__ = "(c) 2006-2009 IMFlash Technologies, Inc."
 import sys
 import getopt
 import re
-from operator import itemgetter
 
 
 err = sys.stderr
 _debug = 0
 log = sys.stdout
-outf = sys.stdout
 
 def usage():
 	print >>err, __doc__
 
-
-def reset(test_stat, test_name):
-	#print "Reset()"
-	test_stat.clear() # Reset the dictionary
-	test_name = "Header" # test_name is reset to header
-	test_stat[test_name] = [0,0,0] # Create a dictionary item for header
-	return test_stat, test_name
-
-def debug_log(string, var):
-	if _debug:
-		print >>log, string, var
-
-def print_stats(numLines, stats, trend_name, series_name):
-	if numLines == 0:
-		print "The datalog is invalid"
-		sys.exit(2)
-
-	print >>outf,"Total Trends:",len(trend_name)
-	print >>outf,"Total Series:",len(series_name)
-	print >>outf
-	print >>outf,"**** Flow Start ****"
-	
-	for test, stat in sorted(stats.iteritems(),key=itemgetter(1),reverse=True):
-		print >>outf,"+=====================================+"
-		print >>outf,"|TestName:",test
-		print >>outf,"+=====================================+"
-		print >>outf,"Trend  Lines:", stat[1]
-		print >>outf,"Series Lines:", stat[2]
-		print >>outf,"Total  Lines:", stat[0]
-		print >>outf
-	
-	print >>outf, "\nTotal Lines per die:",numLines
-
 def main(argv):                          
-
+	outf = sys.stdout
 	inp_file = None
-	test_stat = {}
-	test_name = "Header"
 	try:                                
 		opts, args = getopt.getopt(argv, "ho:d ",["help","output="])
 	except getopt.GetoptError, error_string:          
 		print str(error_string);
 		usage() 
 		sys.exit(2)
-	for opt, arg in opts: 
+	for opt, arg in opts:                
 		if opt in ("-h", "--help"):      
 			usage()
 			sys.exit()
@@ -88,7 +51,8 @@ def main(argv):
 			global _debug
 			_debug = 1
 		elif opt in ("-o", "--output"): 
-			debug_log( "Output File:",arg)
+			if (_debug):
+				print >>log, "Output File:",arg
 			try:
 				outf = open(arg, 'w')
 			except IOError:
@@ -101,9 +65,8 @@ def main(argv):
 	else: 
 		inp_file = args[0]  # Get the first argument as the input file, if more files are specified, ignore others
 		dlog = open(inp_file, 'r')
-		debug_log( "Input File:",inp_file)
-
-	EC_bin = ['*', '1','2','3','4','5','6','7','8','9']
+		if (_debug):
+			print >>log, "Input File:",inp_file
 
 	trend = re.compile(r"""
 			^			# anchor the beginning
@@ -145,82 +108,22 @@ def main(argv):
 			\s*
 			""", re.VERBOSE)
 
-	testname = re.compile(r"""
-			^\|\s*(\S+)
-			""", re.VERBOSE)
-
-	first_word = re.compile(r"""
-			^(\S+)
-			""", re.VERBOSE)
-
 	dut_xy =  re.compile(r""" 
 			\(X,Y\)=\((\d+),(\d+)\)  # Match (X,Y)=(\num,\num) 
 			""", re.VERBOSE)
 
-	trend_name = []
-	series_name = []
-
-	line = dlog.readline()
-	done = False
-	while line:
-		num_lines = 0
+	trend_names = []
+	while True:
+		line = inf.readline()
+		if not line:
+			break
 		# Look for Trends and Series Registers
 		if trend.search(line):
 			match = trend.search(line)
-			trend_name.append(match.groups()[0])
-			debug_log( "Trend appended:", trend_name[-1])
-		elif series.search(line):
-			match = series.search(line)
-			series_name.append(match.groups()[0])
-			debug_log( "Series appended:", series_name[-1])
-		elif start_flow.search(line):
-			#match = start_flow.search(line)
-			debug_log("flow started",None)
-			test_stat, test_name = reset(test_stat, test_name)
-			line = dlog.readline() # Read the first line in the flow
-			num_lines += 1
-			debug_log( "num_lines:", num_lines)
-			while line:
-				test_stat[test_name][0] += 1 # Increment the first element in list
-				if test_start.search(line): # +===...===+
-					debug_log("test_start",None)
-					line = dlog.readline()  # Next line
-					num_lines += 1
-					if testname.search(line): # Look for test_name
-						test_name = testname.search(line).groups()[0] # | TESTNAME
-						debug_log( "Test Name:", test_name)
-					dlog.readline() # Throw away +===...===+
-					num_lines += 1
-					test_stat[test_name] = [0,0,0] # New key added and stats initialized
-					debug_log( "test_stat initialized:",test_stat[test_name])
-				elif bin_line.search(line):
-					match = bin_line.search(line)
-					debug_log("Bin line:",match.groups())
-					if match.groups()[1] in EC_bin:  # If second char matches something in EC_bin then full-flow
-						debug_log("Full Flow Pass:",1)
-						done = True
-						break
-					else:
-						debug_log("Full Flow Fail:",0)
-						test_stat, test_name = reset(test_stat, test_name)
-						break
-				else:
-					match = first_word.search(line)
-					if match and match.groups()[0] in trend_name: # if first word is a trend
-						test_stat[test_name][1] += 1
-						debug_log("Line is a Trend. Trend Count:",(test_stat[test_name][1], match.groups()[0]))
-					if match and match.groups()[0] in series_name: # if first word is a series
-						test_stat[test_name][2] += 1
-						debug_log("Line is a Series. Series Count:",(test_stat[test_name][2], match.groups()[0]) )
+			trend_name.append(
 
-				line = dlog.readline() # Read next line in flow
-				num_lines += 1
-		if done:
-			debug_log("Success:",1)
-			break
-		line = dlog.readline() # Read next line in dlog
 
-	print_stats(num_lines,test_stat, trend_name, series_name)
+
 
 
 

@@ -48,10 +48,6 @@ def main(argv):
 			\s*
 			""", re.VERBOSE)
 
-	test_name = re.compile(r"""
-			^\|\s*(\S+)
-			""", re.VERBOSE)
-
 	dut_xy =  re.compile(r""" 
 			\(X,Y\)=\((\d+),(\d+)\)  # Match (X,Y)=(\num,\num) 
 			""", re.VERBOSE)
@@ -93,10 +89,6 @@ def main(argv):
 		match = test_start.search(line)
 		if match:
 			print "***TEST_START"
-			line = inf.readline() # Next line
-			match1 = test_name.search(line)
-			if match1:
-				print "***TEST_NAME",match1.groups()[0]
 			
 if __name__ == "__main__":
 	main(sys.argv[1:])

@@ -120,7 +120,7 @@ PROBECARD_SITE 8
 Dut A opens status 0
             Binreg  Bitreg
             ------  ------
-Bin Results  (E)    (1)
+Bin Results  (E)    (0)
 
 }
 
