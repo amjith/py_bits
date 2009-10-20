@@ -25,13 +25,13 @@ __copyright__ = "(c) 2006-2009 IMFlash Technologies, Inc."
 import sys
 import getopt
 import re
+from operator import itemgetter
 
 
 err = sys.stderr
-_debug = 1
+_debug = 0
 log = sys.stdout
-#test_stat = {}
-#test_name = "Header"
+outf = sys.stdout
 
 def usage():
 	print >>err, __doc__
@@ -39,7 +39,7 @@ def usage():
 
 def reset(test_stat, test_name):
 	#print "Reset()"
-	test_stat = {} # Reset the dictionary
+	test_stat.clear() # Reset the dictionary
 	test_name = "Header" # test_name is reset to header
 	test_stat[test_name] = [0,0,0] # Create a dictionary item for header
 	return test_stat, test_name
@@ -48,10 +48,29 @@ def debug_log(string, var):
 	if _debug:
 		print >>log, string, var
 
+def print_stats(numLines, stats, trend_name, series_name):
+	if numLines == 0:
+		print "The datalog is invalid"
+		sys.exit(2)
+
+	print >>outf,"Total Trends:",len(trend_name)
+	print >>outf,"Total Series:",len(series_name)
+	print >>outf
+	print >>outf,"**** Flow Start ****"
+	
+	for test, stat in sorted(stats.iteritems(),key=itemgetter(1),reverse=True):
+		print >>outf,"+=====================================+"
+		print >>outf,"|TestName:",test
+		print >>outf,"+=====================================+"
+		print >>outf,"Trend  Lines:", stat[1]
+		print >>outf,"Series Lines:", stat[2]
+		print >>outf,"Total  Lines:", stat[0]
+		print >>outf
+	
+	print >>outf, "\nTotal Lines per die:",numLines
 
 def main(argv):                          
 
-	outf = sys.stdout
 	inp_file = None
 	test_stat = {}
 	test_name = "Header"
@@ -82,10 +101,9 @@ def main(argv):
 	else: 
 		inp_file = args[0]  # Get the first argument as the input file, if more files are specified, ignore others
 		dlog = open(inp_file, 'r')
-		if (_debug):
-			debug_log( "Input File:",inp_file)
+		debug_log( "Input File:",inp_file)
 
-	EC_bin = ['*', 1,2,3,4,5,6,7,8,9]
+	EC_bin = ['*', '1','2','3','4','5','6','7','8','9']
 
 	trend = re.compile(r"""
 			^			# anchor the beginning
@@ -157,6 +175,7 @@ def main(argv):
 			debug_log( "Series appended:", series_name[-1])
 		elif start_flow.search(line):
 			#match = start_flow.search(line)
+			debug_log("flow started",None)
 			test_stat, test_name = reset(test_stat, test_name)
 			line = dlog.readline() # Read the first line in the flow
 			num_lines += 1
@@ -164,12 +183,14 @@ def main(argv):
 			while line:
 				test_stat[test_name][0] += 1 # Increment the first element in list
 				if test_start.search(line): # +===...===+
-					debug_log("test_start",0)
+					debug_log("test_start",None)
 					line = dlog.readline()  # Next line
+					num_lines += 1
 					if testname.search(line): # Look for test_name
 						test_name = testname.search(line).groups()[0] # | TESTNAME
 						debug_log( "Test Name:", test_name)
 					dlog.readline() # Throw away +===...===+
+					num_lines += 1
 					test_stat[test_name] = [0,0,0] # New key added and stats initialized
 					debug_log( "test_stat initialized:",test_stat[test_name])
 				elif bin_line.search(line):
@@ -187,10 +208,10 @@ def main(argv):
 					match = first_word.search(line)
 					if match and match.groups()[0] in trend_name: # if first word is a trend
 						test_stat[test_name][1] += 1
-						debug_log("Line is a Trend. Trend Count:",test_stat[test_name][1])
-					elif match and match.groups()[0] in series_name: # if first word is a series
+						debug_log("Line is a Trend. Trend Count:",(test_stat[test_name][1], match.groups()[0]))
+					if match and match.groups()[0] in series_name: # if first word is a series
 						test_stat[test_name][2] += 1
-						debug_log("Line is a Series. Series Count:",test_stat[test_name][2])
+						debug_log("Line is a Series. Series Count:",(test_stat[test_name][2], match.groups()[0]) )
 
 				line = dlog.readline() # Read next line in flow
 				num_lines += 1
@@ -199,7 +220,7 @@ def main(argv):
 			break
 		line = dlog.readline() # Read next line in dlog
 
-	print "Total number of line:",num_lines 
+	print_stats(num_lines,test_stat, trend_name, series_name)
 
 
 
