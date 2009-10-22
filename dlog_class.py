@@ -147,13 +147,75 @@ class Datalog:
 			   \(X,Y\)=\((\d+),(\d+)\)  # Match (X,Y)=(\num,\num) 
 			   """, re.VERBOSE)
 
-#	def TrendSeriesParser(self):
+		self.Trend  = []
+		self.Series = []
+		self.MaxDie = ()
+		self.MaxLines = 0
+		self.EC_bin = ['*', '1','2','3','4','5','6','7','8','9']
+
+	def TrendSeriesParser(self, inpFile):
+		try:
+			inp_file = open(inpFile, 'r')
+		except IOError:
+			print >>err,'Cannot open input file:', inpFile
+			sys.exit(2)
+
+		for line in inp_file:
+			if self.reTrend.search(line):       # Trend Def match
+				TrendMatch = self.reTrend.search(line)
+				self.Trend.append(TrendMatch.groups()[0])
+			elif self.reSeries.search(line):    # Series Def match
+				SeriesMatch = self.reSeries.search(line)
+				self.Series.append(SeriesMatch.groups()[0])
+			elif self.reFlowStart.search(line): # Flow started
+				inp_file.close();
+				break;
+
+	def FindMaxDie(self, inpFile):
+		try:
+			inp_file = open(inpFile, 'r')
+		except IOError:
+			print >>err,'Cannot open input file:', inpFile
+			sys.exit(2)
+		
+		flowOn = False
+		DutLineCount = 0
+		
+		for line in inp_file:
+			if flowOn:
+				DutLineCount += 1
+				if self.reDutXY.search(line):
+					DutMatch = self.reDutXY.search(line)
+					DutXY = (DutMatch.groups()[0], DutMatch.groups()[1])
+				elif self.reBinLine.search(line):
+					BinMatch = self.reBinLine.search(line)
+					flowOn = False
+					if DutLineCount > self.MaxLines and BinMatch.groups()[1] in self.EC_bin:
+						self.MaxLines = DutLineCount
+						self.MaxDie = DutXY
+			elif self.reFlowStart.search(line):
+				DutLineCount = 0
+				flowOn = True
+
+		
+	def PrintResults(self):
+		print "Number of Trends:", len(self.Trend)
+		print "Number of Series:", len(self.Series)
+		print "Max Die         :", self.MaxDie
+		print "Max Lines       :", self.MaxLines
+
+
 	
 
 def main(argv):
 	cmdLine = CmdLineParser(argv)
 	cmdLine.parser()
 	cmdLine.print_args()
+
+	dlog = Datalog()
+	dlog.TrendSeriesParser(cmdLine.inpFile)
+	dlog.FindMaxDie(cmdLine.inpFile)
+	dlog.PrintResults()
 	
 
 if __name__ == "__main__":
