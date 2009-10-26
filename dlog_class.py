@@ -94,7 +94,7 @@ class CmdLineParser:
 class Datalog:
 	"A datalog class that parses and stores various statistics about the datalog"
 
-	def __init__(self):
+	def __init__(self, EC = []):
 		self.reTrend = re.compile(r"""
 			   ^			# anchor the beginning
 			   \s*			# leading optional space
@@ -149,9 +149,12 @@ class Datalog:
 
 		self.Trend  = []
 		self.Series = []
-		self.MaxDie = ()
+		self.DieXY = ()
 		self.MaxLines = 0
-		self.EC_bin = ['*', '1','2','3','4','5','6','7','8','9']
+		if EC:
+			self.EC= EC
+		else:
+			self.EC= ['*', '1','2','3','4','5','6','7','8','9']
 
 	def TrendSeriesParser(self, inpFile):
 		try:
@@ -171,7 +174,11 @@ class Datalog:
 				inp_file.close();
 				break;
 
-	def FindMaxDie(self, inpFile):
+
+	def FindDie(self, inpFile, max = True, EC = []):
+		if not EC:
+			EC = self.EC	
+
 		try:
 			inp_file = open(inpFile, 'r')
 		except IOError:
@@ -190,17 +197,17 @@ class Datalog:
 				elif self.reBinLine.search(line):
 					BinMatch = self.reBinLine.search(line)
 					flowOn = False
-					if DutLineCount > self.MaxLines and BinMatch.groups()[1] in self.EC_bin:
+					if DutLineCount > self.MaxLines and BinMatch.groups()[1] in self.EC:
 						self.MaxLines = DutLineCount
-						self.MaxDie = DutXY
+						self.DieXY = DutXY
+					if not max: # if max is False, then break the loop at the first match
+						break
 			elif self.reFlowStart.search(line):
 				DutLineCount = 0
 				flowOn = True
 
-	def FindDieEC(self, inpFile, EC=[]):
-		if not EC:
-			EC = self.EC	
 
+	def ParseDie(self, inpFile, X, Y):
 		try:
 			inp_file = open(inpFile, 'r')
 		except IOError:
@@ -208,36 +215,27 @@ class Datalog:
 			sys.exit(2)
 		
 		flowOn = False
-		DutLineCount = 0
-		
+
 		for line in inp_file:
 			if flowOn:
+				DutLineCount += 1
+				if self.reDutXY.search(line):
+					DutMatch = self.reDutXY.search(line)
+					DutXY = (DutMatch.groups()[0], DutMatch.groups()[1])
+					if  DutXY != (X,Y):
+						flowOn = False
+				elif self.reBinLine.search(line):
+					break
 
-			elif self.reFlowStart.search(line):
-				DutLineCount = 0
-				flowOn = True
-
-	#--------------------------------------------------
-	# def ParseDie(self, inpFile, X, Y):
-	# 	try:
-	# 		inp_file = open(inpFile, 'r')
-	# 	except IOError:
-	# 		print >>err,'Cannot open input file:', inpFile
-	# 		sys.exit(2)
-	# 	
-	# 	flowOn = False
-	#-------------------------------------------------- 
-
-	#--------------------------------------------------
-	# 	for line in inp_file:
-	# 		if flowOn:
-	#-------------------------------------------------- 
+				elif self.reFlowStart.search(line):
+					DutLineCount = 0
+					flowOn = True
 
 		
 	def PrintResults(self):
 		print "Number of Trends:", len(self.Trend)
 		print "Number of Series:", len(self.Series)
-		print "Max Die         :", self.MaxDie
+		print "Max Die         :", self.DieXY
 		print "Max Lines       :", self.MaxLines
 
 
@@ -250,7 +248,7 @@ def main(argv):
 
 	dlog = Datalog()
 	dlog.TrendSeriesParser(cmdLine.inpFile)
-	dlog.FindMaxDie(cmdLine.inpFile)
+	dlog.FindDie(cmdLine.inpFile)
 	dlog.PrintResults()
 	
 
