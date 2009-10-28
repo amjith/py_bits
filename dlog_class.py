@@ -7,9 +7,12 @@ Usage:
 log_profiler.py [options] file_name
 
 Options:
-	-o ..., --output=...    redirect the output of this script to a file
-	-h, --help              show this help
-	-d                      show debugging information
+	-o <filename>, --output=<filename>    Redirect the output of this script to a file
+	-c, --csv                             Print the output in the csv format
+	-m, --max                             Pick the die with maximum number of lines
+	-h, --help                            Show this help
+	-d                                    Show debugging information
+
 
 Examples:
 	log_profiler 1254842127.6816292.0.6292-04.FPP.00.B63A.W26S.log:0                 generates the statistics for the datalog
@@ -25,6 +28,7 @@ __copyright__ = "(c) 2006-2009 IMFlash Technologies, Inc."
 import sys
 import getopt
 import re
+import csv
 from operator import itemgetter
 
 err = sys.stderr
@@ -43,6 +47,8 @@ class CmdLineParser:
 	def __init__(self,arguments):
 		self.argv = arguments
 		self.inpFile = self.outFile = None
+		self.csv = False
+		self.max = False
 
 	def usage(self, exit_code):
 		print >>err, __doc__
@@ -51,7 +57,7 @@ class CmdLineParser:
 
 	def parser(self):
 		try:
-			opts, args = getopt.getopt(self.argv, "ho:d",["help","output="])
+			opts, args = getopt.getopt(self.argv, "mho:dc",["max","help","output=","csv"])
 		except getopt.GetoptError, error_string:          
 			print str(error_string);
 			self.usage(2) 
@@ -61,17 +67,20 @@ class CmdLineParser:
 			elif opt == '-d':                
 				global debug_
 				debug_ = 1
+			elif opt in ("-c","--csv"):
+				self.csv = True
+			elif opt in ("-m","--max"):
+				self.max = True
 			elif opt in ("-o", "--output"): 
 				self.outFile = arg
 				debug_log( "Output File:",self.outFile )
 				try:
 					out_fp = open(self.outFile, 'w')
 				except IOError:
-					print >>err,'Cannot open output file:', arg
+					print >>err,'Cannot open output file:', self.outFile
 					sys.exit(2)
-				else:
-					out_fp.close()
-
+				global outf
+				outf = out_fp
 		if (not args): # If no args left after options, no inpfile
 			print >>err, "Missing input arguement: Input file"
 			self.usage(2)
@@ -87,14 +96,17 @@ class CmdLineParser:
 				inp_fp.close()
 
 	def print_args(self):
-		print "inpFile:",self.inpFile
-		print "outFile:",self.outFile
-		print "debug  :",self.debug
+		print >>err, "Command Line Arguments:"
+		print >>err, "inpFile:",self.inpFile
+		print >>err, "outFile:",self.outFile
+		print >>err, "csv:",self.csv
+		print >>err, "max:",self.max
+		print >>err
 
 class Datalog:
 	"A datalog class that parses and stores various statistics about the datalog"
 
-	def __init__(self, debug=False, EC = []):
+	def __init__(self, EC = []):
 		self.reTrend = re.compile(r"""
 			   ^			# anchor the beginning
 			   \s*			# leading optional space
@@ -140,7 +152,7 @@ class Datalog:
 			   """, re.VERBOSE)
 
 		self.reFirstWord = re.compile(r"""
-			   ^(\S+)
+			   ^\s*(\S+)
 			   """, re.VERBOSE)
 
 		self.reDutXY =  re.compile(r""" 
@@ -212,6 +224,7 @@ class Datalog:
 				DutLineCount = 0
 				flowOn = True
 		debug_log("Chosen die:",self.DieXY)
+		return self.DieXY
 
 
 	def ParseDie(self, inpFile, X, Y):
@@ -224,7 +237,7 @@ class Datalog:
 		testHeader = False
 		flowOn = False
 		TestName = "Header"
-		self.TestStat[TestName] = [ 0, 0, 0 ]
+		self.TestStat[TestName] = [ 0, 0, 0, 0 ]
 
 		for line in inp_file:
 			if flowOn:
@@ -237,38 +250,58 @@ class Datalog:
 						debug_log("Not the chosen die",None)
 						flowOn = False
 						TestName = "Header"
-						self.TestStat[TestName] = [ 0, 0, 0 ]
-				elif self.reBinLine.search(line):
+						self.TestStat[TestName] = [ 0, 0, 0, 0]
+				elif self.reBinLine.search(line): # Bin line 
 					debug_log("Bin Line", None)
 					break
-				elif self.reTestStart.search(line):
-					testHeader = True
-					debug_log("First Test Header",None)
-				elif testHeader and self.reTestName.search(line):
-					TestName = self.reTestName.search(line).group()[0]
-					self.TestStat[TestName] = [ 0, 0, 0 ]
+				elif self.reTestStart.search(line): # First header line +=== ... ===+
+					testHeader = not(testHeader)
+					debug_log("Test Header",None)
+				elif testHeader and self.reTestName.search(line): # Test Name, only after first header
+					TestName = self.reTestName.search(line).groups()[0]
+					self.TestStat[TestName] = [ 0, 0, 0, 0]
 					debug_log("TestName:", TestName)
-				elif testHeader and self.reTestStart.search(line):
-					testHeader = False
-					debug_log("Second Test Header",None)
-				elif self.reFirstWord.search(line):
+				elif self.reFirstWord.search(line): # A non-blank line
 					self.TestStat[TestName][0] += 1
 					if self.reFirstWord.search(line).groups()[0] in self.Trend:
-						self.TestStat[TestName][1] += 1
+						self.TestStat[TestName][1] += 1 # Trend Line
 					elif self.reFirstWord.search(line).groups()[0] in self.Series:
-						self.TestStat[TestName][2] += 1
+						self.TestStat[TestName][2] += 1 # Series Line
 					debug_log("TestStat:",self.TestStat[TestName])
+				else:  # Blank line
+					self.TestStat[TestName][0] += 1 # Total line count in test
+					self.TestStat[TestName][3] += 1 # Blank line count
 			elif self.reFlowStart.search(line):
 				DutLineCount = 0
 				flowOn = True
 				debug_log("TestFlow Start",None)
 
 		
-	def PrintResults(self):
-		print "Number of Trends:", len(self.Trend)
-		print "Number of Series:", len(self.Series)
-		print "Max Die         :", self.DieXY
-		print "Max Lines       :", self.MaxLines
+	def PrintResults(self, csv_opt = False):
+		if csv_opt:
+			csvFile = csv.writer(outf, delimiter=',')
+			csvFile.writerow(['TestName','Trends','Series','Non-extractables','Total','Blank','Non-Blank'])
+			for test, stat in sorted(self.TestStat.iteritems(),key=itemgetter(1),reverse=True):
+				csvFile.writerow([test,stat[1],stat[2], stat[0]-stat[1]-stat[2],
+					stat[0],stat[3],stat[0]-stat[3] ])
+		else:
+			print >>outf, "Total Number of Trends:", len(self.Trend)
+			print >>outf, "Total Number of Series:", len(self.Series)
+			print >>outf, "Die         :", self.DieXY
+			print >>outf, "Lines       :", self.MaxLines
+			print >>outf 
+
+			for test, stat in sorted(self.TestStat.iteritems(),key=itemgetter(1),reverse=True):
+				print >>outf,"+=====================================+"
+				print >>outf,"|TestName:",test
+				print >>outf,"+=====================================+"
+				print >>outf,"Trends          :", stat[1]
+				print >>outf,"Series          :", stat[2]
+				print >>outf,"Non-extractables:", stat[0] - stat[1] - stat[2]
+				print >>outf,"      ---------------"
+				print >>outf,"Total Lines     :", stat[0], "   (Blanks:", stat[3], "Non-Blanks:", stat[0]-stat[3], ")"
+				print >>outf,"      ---------------"
+				print >>outf
 
 
 	
@@ -276,13 +309,15 @@ class Datalog:
 def main(argv):
 	cmdLine = CmdLineParser(argv)
 	cmdLine.parser()
-	#cmdLine.print_args()
+	cmdLine.print_args()
 
 	dlog = Datalog()
 	dlog.TrendSeriesParser(cmdLine.inpFile)
-	dlog.FindDie(cmdLine.inpFile)
-	dlog.ParseDie(cmdLine.inpFile, dlog.DieXY[0], dlog.DieXY[1])
-	dlog.PrintResults()
+	if dlog.FindDie(cmdLine.inpFile, cmdLine.max):
+		dlog.ParseDie(cmdLine.inpFile, dlog.DieXY[0], dlog.DieXY[1])
+		dlog.PrintResults(cmdLine.csv)
+	else:
+		print "Not die found in the datalog"
 	
 
 if __name__ == "__main__":
