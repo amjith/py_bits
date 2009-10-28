@@ -28,8 +28,9 @@ __copyright__ = "(c) 2006-2009 IMFlash Technologies, Inc."
 import sys
 import getopt
 import re
-import csv
-from operator import itemgetter
+if (2,2) != sys.version_info[:2]:   # if Python version is 2.6
+	import csv
+	from operator import itemgetter
 
 err = sys.stderr
 log = sys.stdout
@@ -40,6 +41,18 @@ def debug_log( string, var):
 	global debug_
 	if debug_:
 		print >>log, string, var
+
+def dic_sort(dict,by_value=False, reverse=False):
+    if by_value:
+        items = [(v,k) for k,v in dict.items()] # make a list of tuples with (values, keys)
+    else:
+        items = dict.items()
+    items.sort()
+    if reverse:
+        items.reverse()
+    if by_value:
+        items = [(k,v) for v, k in items] # swap (values,keys) -> (keys,values) 
+    return items
 
 class CmdLineParser:
 	"Command Line parser."
@@ -218,8 +231,8 @@ class Datalog:
 						self.MaxLines = DutLineCount
 						self.DieXY = DutXY
 						debug_log("New Max die found:",self.DieXY)
-					if not max: # if max is False, then break the loop at the first match
-						break
+						if not max: # if max is False, then break the loop at the first match
+							break
 			elif self.reFlowStart.search(line):
 				DutLineCount = 0
 				flowOn = True
@@ -279,11 +292,16 @@ class Datalog:
 		
 	def PrintResults(self, csv_opt = False):
 		if csv_opt:
-			csvFile = csv.writer(outf, delimiter=',')
-			csvFile.writerow(['TestName','Trends','Series','Non-extractables','Total','Blank','Non-Blank'])
-			for test, stat in sorted(self.TestStat.iteritems(),key=itemgetter(1),reverse=True):
-				csvFile.writerow([test,stat[1],stat[2], stat[0]-stat[1]-stat[2],
-					stat[0],stat[3],stat[0]-stat[3] ])
+			if (2,2) != sys.version_info[:2]:   # if Python version is 2.6
+				csvFile = csv.writer(outf, delimiter=',')
+				csvFile.writerow(['TestName','Trends','Series','Non-extractables','Total','Blank','Non-Blank'])
+				for test, stat in sorted(self.TestStat.iteritems(),key=itemgetter(1),reverse=True):
+					csvFile.writerow([test,stat[1],stat[2], stat[0]-stat[1]-stat[2],
+						stat[0],stat[3],stat[0]-stat[3] ])
+			else:
+				print >>outf,'TestName,','Trends,','Series,','Non-extractables,','Total,','Blank,','Non-Blank'
+				for test, stat in dic_sort(self.TestStat,by_value=True,reverse=True):
+					print >>outf, test, ',',stat[1],',',stat[2],',', stat[0]-stat[1]-stat[2],',', stat[0],',',stat[3],',',stat[0]-stat[3]
 		else:
 			print >>outf, "Total Number of Trends:", len(self.Trend)
 			print >>outf, "Total Number of Series:", len(self.Series)
@@ -291,19 +309,30 @@ class Datalog:
 			print >>outf, "Lines       :", self.MaxLines
 			print >>outf 
 
-			for test, stat in sorted(self.TestStat.iteritems(),key=itemgetter(1),reverse=True):
-				print >>outf,"+=====================================+"
-				print >>outf,"|TestName:",test
-				print >>outf,"+=====================================+"
-				print >>outf,"Trends          :", stat[1]
-				print >>outf,"Series          :", stat[2]
-				print >>outf,"Non-extractables:", stat[0] - stat[1] - stat[2]
-				print >>outf,"      ---------------"
-				print >>outf,"Total Lines     :", stat[0], "   (Blanks:", stat[3], "Non-Blanks:", stat[0]-stat[3], ")"
-				print >>outf,"      ---------------"
-				print >>outf
-
-
+			if (2,2) != sys.version_info[:2]:   # if Python version is 2.6
+				for test, stat in sorted(self.TestStat.iteritems(),key=itemgetter(1),reverse=True):
+					print >>outf,"+=====================================+"
+					print >>outf,"|TestName:",test
+					print >>outf,"+=====================================+"
+					print >>outf,"Trends          :", stat[1]
+					print >>outf,"Series          :", stat[2]
+					print >>outf,"Non-extractables:", stat[0] - stat[1] - stat[2]
+					print >>outf,"      ---------------"
+					print >>outf,"Total Lines     :", stat[0], "   (Blanks:", stat[3], "Non-Blanks:", stat[0]-stat[3], ")"
+					print >>outf,"      ---------------"
+					print >>outf
+			else:
+				for test, stat in dic_sort(self.TestStat,by_value=True,reverse=True):
+					print >>outf,"+=====================================+"
+					print >>outf,"|TestName:",test
+					print >>outf,"+=====================================+"
+					print >>outf,"Trends          :", stat[1]
+					print >>outf,"Series          :", stat[2]
+					print >>outf,"Non-extractables:", stat[0] - stat[1] - stat[2]
+					print >>outf,"      ---------------"
+					print >>outf,"Total Lines     :", stat[0], "   (Blanks:", stat[3], "Non-Blanks:", stat[0]-stat[3], ")"
+					print >>outf,"      ---------------"
+					print >>outf
 	
 
 def main(argv):
@@ -317,7 +346,7 @@ def main(argv):
 		dlog.ParseDie(cmdLine.inpFile, dlog.DieXY[0], dlog.DieXY[1])
 		dlog.PrintResults(cmdLine.csv)
 	else:
-		print "Not die found in the datalog"
+		print "No die found in the datalog"
 	
 
 if __name__ == "__main__":

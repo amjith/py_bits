@@ -48,6 +48,18 @@ def debug_log(string, var):
 	if _debug:
 		print >>log, string, var
 
+def dic_sort(dict,by_value=False, reverse=False):
+    if by_value:
+        items = [(v,k) for k,v in dict.items()] # make a list of tuples with (values, keys)
+    else:
+        items = dict.items()
+    items.sort()
+    if reverse:
+        items.reverse()
+    if by_value:
+        items = [(k,v) for v, k in items] # swap (values,keys) -> (keys,values) 
+    return items
+
 def print_stats(numLines, stats, trend_name, series_name):
 	if numLines == 0:
 		print "The datalog is invalid"
