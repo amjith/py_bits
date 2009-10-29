@@ -10,8 +10,10 @@ Options:
 	-o <filename>, --output=<filename>    Redirect the output of this script to a file
 	-c, --csv                             Print the output in the csv format
 	-m, --max                             Pick the die with maximum number of lines
+	-x  x,y                               Specify the die's (x,y) location
+	-e EC_BIN, --EC=EC_BIN				  Specify the EC_Bin to match when looking for a die
 	-h, --help                            Show this help
-	-d                                    Show debugging information
+	-D                                    Show debugging information
 
 
 Examples:
@@ -62,6 +64,8 @@ class CmdLineParser:
 		self.inpFile = self.outFile = None
 		self.csv = False
 		self.max = False
+		self.xy  = ()
+		self.EC = []
 
 	def usage(self, exit_code):
 		print >>err, __doc__
@@ -70,20 +74,24 @@ class CmdLineParser:
 
 	def parser(self):
 		try:
-			opts, args = getopt.getopt(self.argv, "mho:dc",["max","help","output=","csv"])
+			opts, args = getopt.getopt(self.argv, "e:x:mho:Dc",["EC=","max","help","output=","csv"])
 		except getopt.GetoptError, error_string:          
 			print str(error_string);
 			self.usage(2) 
 		for opt, arg in opts: 
 			if opt in ("-h", "--help"):      
 				self.usage(0)
-			elif opt == '-d':                
+			elif opt == '-D':
 				global debug_
 				debug_ = 1
+			elif opt == '-x':
+				self.xy = tuple(arg.split(','))
 			elif opt in ("-c","--csv"):
 				self.csv = True
 			elif opt in ("-m","--max"):
 				self.max = True
+			elif opt in ("-e", "--EC"): 
+				self.EC = [arg]
 			elif opt in ("-o", "--output"): 
 				self.outFile = arg
 				debug_log( "Output File:",self.outFile )
@@ -114,6 +122,8 @@ class CmdLineParser:
 		print >>err, "outFile:",self.outFile
 		print >>err, "csv:",self.csv
 		print >>err, "max:",self.max
+		print >>err, "die xy:",self.xy
+		print >>err, "EC:",self.EC
 		print >>err
 
 class Datalog:
@@ -133,7 +143,9 @@ class Datalog:
 			   \s*			# leading optional space
 			   SERIES_DEF	# SERIES_DEF string
 			   \s*			# optional space in between
-			   (\S+)		# non-space characters - Series name
+			   \d+   		# Numbers
+			   \s*			# optional space in between
+			   (\S+)        # Series def name
 			   """, re.VERBOSE)
 		self.reFlowStart = re.compile(r"""
 			   ^\s*{\s*$	# A line that only has "{" and some space
@@ -171,6 +183,9 @@ class Datalog:
 		self.reDutXY =  re.compile(r""" 
 			   \(X,Y\)=\((\d+),(\d+)\)  # Match (X,Y)=(\num,\num) 
 			   """, re.VERBOSE)
+		self.reDutA = re.compile(r"""
+				^TESTER_SUB_SITE\s*(\d)
+				""",re.VERBOSE)
 
 		self.Trend  = []
 		self.Series = []
@@ -208,6 +223,11 @@ class Datalog:
 	def FindDie(self, inpFile, max = True, EC = []):
 		if not EC:
 			EC = self.EC	
+
+		debug_log('FindDie inpFile:',inpFile)
+		debug_log('FindDie max:',max)
+		debug_log('FindDie EC:',EC)
+
 		try:
 			inp_file = open(inpFile, 'r')
 		except IOError:
@@ -226,6 +246,7 @@ class Datalog:
 					debug_log("Current die:",DutXY)
 				elif self.reBinLine.search(line):
 					BinMatch = self.reBinLine.search(line)
+					debug_log( 'Bin Line:',(BinMatch.groups()[0],BinMatch.groups()[1]))
 					flowOn = False
 					if DutLineCount > self.MaxLines and BinMatch.groups()[1] in self.EC:
 						self.MaxLines = DutLineCount
@@ -260,6 +281,8 @@ class Datalog:
 					DutXY = (DutMatch.groups()[0], DutMatch.groups()[1])
 					debug_log("Dut XY:",DutXY)
 					if  DutXY != (X,Y):
+						debug_log("Current die",DutXY)
+						debug_log("Chosen die",(X,Y))
 						debug_log("Not the chosen die",None)
 						flowOn = False
 						TestName = "Header"
@@ -340,9 +363,12 @@ def main(argv):
 	cmdLine.parser()
 	cmdLine.print_args()
 
-	dlog = Datalog()
+	dlog = Datalog(cmdLine.EC)
 	dlog.TrendSeriesParser(cmdLine.inpFile)
-	if dlog.FindDie(cmdLine.inpFile, cmdLine.max):
+	if cmdLine.xy:
+		dlog.ParseDie(cmdLine.inpFile, cmdLine.xy[0], cmdLine.xy[1])
+		dlog.PrintResults(cmdLine.csv)
+	elif dlog.FindDie(cmdLine.inpFile, cmdLine.max, cmdLine.EC):
 		dlog.ParseDie(cmdLine.inpFile, dlog.DieXY[0], dlog.DieXY[1])
 		dlog.PrintResults(cmdLine.csv)
 	else:
